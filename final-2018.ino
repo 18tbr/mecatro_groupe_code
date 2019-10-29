@@ -1,194 +1,162 @@
+// Movement Sample for Kangaroo
+// Copyright (c) 2013 Dimension Engineering LLC
+// See license.txt for license details.
 
-#include <Wire.h>
-#include <Adafruit_MotorShield.h>
-#include "utility/Adafruit_MS_PWMServoDriver.h"
+#include <SoftwareSerial.h>
+#include <Kangaroo.h>
 
-Adafruit_MotorShield AFMS1 = Adafruit_MotorShield(0x60); 
-Adafruit_MotorShield AFMS2 = Adafruit_MotorShield(0x61); 
-Adafruit_MotorShield AFMS3 = Adafruit_MotorShield(0x62); 
-Adafruit_MotorShield AFMS4 = Adafruit_MotorShield(0x63); 
+// Arduino TX (pin 1/18/16/14) goes to Kangaroo S1
+// Arduino RX (pin 0/19/17/15) goes to Kangaroo S2
+// Arduino GND                 goes to Kangaroo 0V
+// Arduino 5V                  goes to Kangaroo 5V (OPTIONAL, if you want Kangaroo to power the Arduino)
+#define TXK_PIN 8
+#define RXK_PIN 13
 
-// to motor port #1 
-Adafruit_StepperMotor *Motor100 = AFMS1.getStepper(1024, 1);
-// to motor port #2 
-Adafruit_StepperMotor *Motor001 = AFMS1.getStepper(1024, 2);
-// to motor port #1 
-Adafruit_StepperMotor *Motor111 = AFMS2.getStepper(1024, 1);
-// to motor port #2 
-Adafruit_StepperMotor *Motor011 = AFMS2.getStepper(1024, 2);
-// to motor port #1
-Adafruit_StepperMotor *Motor110 = AFMS3.getStepper(1024, 1);
-// to motor port #2 
-Adafruit_StepperMotor *Motor000 = AFMS3.getStepper(1024, 2);
-// to motor port #1 
-Adafruit_StepperMotor *Motor101 = AFMS4.getStepper(1024, 1);
-// to motor port #2 
-Adafruit_StepperMotor *Motor010 = AFMS4.getStepper(1024, 2);
-  int compt = 1;
+// Si échec de téléversement, débrancher les ports 1 et 0 (TX0 / RX0).
 
-void setup() {
-                 // set up Serial library at 9600 bps  , processing liaison série
-  AFMS1.begin(1000);  // create with the default frequency 1.6KHz
-  AFMS2.begin(1000);
-  AFMS3.begin(1000);
-  AFMS4.begin(1000);
+int coords[4];
+int pos_ini[] = {5303, 6643, 6155, 4676};
+int speed = 102;
+int tour = 256;
+int byte_read = 0; ///< The current byte read.
+int separator = 32; ///< The separator between the integers (44=, and 32=Space)
+int index = 0; ///< 0: reading x, 1: reading y.
+
+// Independent mode channels on Kangaroo are, by default, '1' and '2'.
+//on crée une instance d'un objet SoftwareSerial. RXK_PIN reçoit les data en série, TXK_PIN transmet les data en série
+SoftwareSerial  SerialPortK(RXK_PIN, TXK_PIN); // Devant droite
+KangarooSerial  K(SerialPortK);
+KangarooChannel K1(K, '1');
+KangarooChannel K2(K, '2');
+KangarooSerial  L(Serial1); // Derrière droite
+KangarooChannel L1(L, '1');
+KangarooChannel L2(L, '2');
+KangarooSerial  M(Serial2);
+KangarooChannel M1(M, '1');
+KangarooChannel M2(M, '2');
+KangarooSerial  N(Serial3);
+KangarooChannel N1(N, '1');
+KangarooChannel N2(N, '2');
+
+void setup()
+{
+  //définir la vitesse pour la communication en série
   Serial.begin(9600);
-  //AFMS.begin(1000);  // OR with a different frequency, say 1KHz
+  SerialPortK.begin(9600); 
+  Serial1.begin(9600);
+  Serial2.begin(9600);
+  Serial3.begin(9600);
+
+  //starts the channels, homes the channels, waits until the complete execution
+  K1.start();
+  K1.home().wait();
+  K2.start();
+  K2.home().wait();
+  L1.start();
+  L1.home().wait();
+  L2.start();
+  L2.home().wait();
+  M1.start();
+  M1.home().wait();
+  M2.start();
+  M2.home().wait();
+  N1.start();
+  N1.home().wait();
+  N2.start();
+  N2.home().wait();
+  //increment the position
+  K1.pi(3*tour);
+  L1.pi(3*tour);
+  M1.pi(3*tour);
+  N1.pi(3*tour).wait();
+  Serial.println("pret");
 }
 
-void loop() {
 
-  //Vers le haut
-  float LA1[] = {0,20,0,0,20,20,0,20};
-  float LB1[] = {20,0,20,20,0,0,20,0};
-  //Vers le bas
-  float LA2[] = {20,0,20,20,0,0,20,0};
-  float LB2[] = {0,20,0,0,20,20,0,20};
-  //Vers la gauche
-  float LA3[] = {30,25,0,30,0,25,0,0};
-  float LB3[] = {0,0,20,0,20,0,20,20};
-  //Vers la droite
-  float LA4[] = {0,0,30,0,20,0,30,20};
-  float LB4[] = {20,20,0,20,0,20,0,0}; 
-  Adafruit_StepperMotor *moteur[] = {Motor000, Motor001, Motor100, Motor010, Motor101, Motor011, Motor110, Motor111}; 
-  int i = 0;
-  int j = 0;
-  float dif[] = {0,0,0,0,0,0,0,0};
-  int pas[] = {0,0,0,0,0,0,0,0};
-  int quotient[] = {0,0,0,0,0,0,0,0};
-  int reste[] = {0,0,0,0,0,0,0,0};
-  int restepas[] = {0,0,0,0,0,0,0,0};
-  int paseffectif[] = {0,0,0,0,0,0,0,0};
-  int maxpas = abs(pas[0]); 
-  
+//deux fonctions qui permettent de lire les nombres avec l'arduino
+boolean is_a_number(int n)
+{
+  return n >= 48 && n <= 57;
+}
 
 
-  Serial.print(" compteur =");
-  Serial.println(compt);
+int ascii2int(int n, int byte_read)
+{
+  return n*10 + (byte_read - 48);
+}
 
-      //CALCUL DU NOMBRE DE PAS A FAIRE
-       if(compt== 1 || compt== 4){
-        for (i=0; i<8; i++) {
-           dif[i] = LA1[i]-LB1[i];
-           pas[i] = int(dif[i]/0.09204);           
+// .wait() waits until the command is 'finished'. For position, this means it is within the deadband
+// distance from the requested position. You can also call K1.p(position); without .wait() if you want to command it
+// but not wait until it gets to the destination. If you do this, you may want to use K1.getP().value()
+// to check progress.
+// Dérouler : > 0
+// Enrouler : < 0
+void loop()
+{
+  coords[0] = 0;
+  coords[1] = 0;
+  coords[2] = 0;
+  coords[3] = 0;
+  index = 0;
+  bool neg = false;
+  while (Serial.available() > 0)
+    {
+    //on lit l'incrément de position souhaité par l'utilisateur
+    byte_read = Serial.read();
+      //neg est vrai si on met un signe négatif dans le byte-read
+      neg = (byte_read == 45 || neg == true);
+      Serial.println(byte_read);
+      //on vérifie que  c'est bien un nombre
+      if ( is_a_number(byte_read) )
+        {
+          //on associe au moteur n°index la coordonnée entrée par l'utilisateur
+          coords[index] = ascii2int( coords[index], byte_read );
         }
-        Serial.println("vers le haut");
-        }else if(compt==2 || compt==3){
-         for (i=0; i<8; i++) {
-            dif[i] = LA2[i]-LB2[i];
-            pas[i] = int(dif[i]/0.09204);        
-        }
-        Serial.println("vers le bas");
-       }else if(compt==5){
-        for (i=0; i<8; i++) {
-           dif[i] = LA3[i]-LB3[i];
-           pas[i] = int(dif[i]/0.09204);
-        }   
-        Serial.println("vers la gauche");        
-       }else if(compt== 6 || compt== 7){
-        for (i=0; i<8; i++) {
-            dif[i] = LA4[i]-LB4[i];
-            pas[i] = int(dif[i]/0.09204);
-        }
-        Serial.println("vers la droite");
-       }else if(compt==8){
-        for (i=0; i<8; i++) {
-           dif[i] = LA3[i]-LB3[i];
-           pas[i] = int(dif[i]/0.09204);
-        }
-        Serial.println("vers la gauche");
-       } 
-       
-       compt++;
-       if(compt==9){
-        compt =1;
-       }
-    
-    //CALCUL NOMBRE DE PAS MAX 
-      for (i = 1; i<8; i++) {
-       if (maxpas < abs(pas[i])) {
-        maxpas=abs(pas[i]); 
-       }
-      }
-      Serial.println(maxpas);
-      delay(1000);
-    
-    // CALCUL DES RESTES ET QUOTIENTS 
-      for (i=0; i<8; i++) {
-        if( (maxpas%abs(pas[i])) > abs(pas[i])/2 ) {
-          quotient[i]=(maxpas/abs(pas[i]))+1;
-          reste[i]=maxpas-(abs(pas[i]) * quotient[i]); 
-        } else {
-          quotient[i]=(maxpas/abs(pas[i]));
-          reste[i]=maxpas-(abs(pas[i]) * quotient[i]); 
-        }
-        
-        if ( (((abs(pas[i])*quotient[i]) - maxpas) % quotient[i]) > 0) { 
-          restepas[i]=  ( ((abs(pas[i])*quotient[i]) - maxpas) / quotient[i] ) + 1;
-        } else if( (((abs(pas[i])*quotient[i]) - maxpas) % quotient[i]) < 0)  {
-          restepas[i]=  ( ((abs(pas[i])*quotient[i]) - maxpas) / quotient[i] ) - 1;
-        } else {
-          restepas[i]=  ( ((abs(pas[i])*quotient[i]) - maxpas) / quotient[i] );
-        }
-      }
-    
-    // GESTION PAS
-      for (j=0; j<maxpas; j++) {
-        //QUOTIENT : FAIRE UN PAS TOUT LES X QUOTIENTS
-        for(i =0; i < 8; i++) {
-          if( j%quotient[i] == 0 )
-            if(pas[i] > 0) {
-              moteur[i]->step(1, FORWARD, SINGLE);
-              paseffectif[i]++;
-            } else {
-              moteur[i]->step(1, BACKWARD, SINGLE);
-              paseffectif[i]++;
-            }
-          // RESTEPAS A FAIRE CORRECTION DE X PAS TOUT LES X BOUCLES
-          if (restepas[i] != 0) {
-            if( ( ( (maxpas-1)/restepas[i] ) % j ) == 0) {
-              if(restepas[i] > 0) {
-                moteur[i]->step(1, FORWARD, SINGLE);
-                paseffectif[i]++;
-              } else {
-                moteur[i]->step(1, BACKWARD, SINGLE);
-                paseffectif[i]--;
-              }
-            }
+      //si on arrive à une fin de ligne ou à une virgule, on incrémente index de 1 et on passa au moteur suivant
+      else if ( byte_read == separator || byte_read == 10 )
+        {
+          //on met la coordonnée en négatif si l'utilisateur a écrit un signe -
+          if(neg)
+          {
+            coords[index] = -coords[index];
+            neg=false;
           }
-          
+          //on incrémente l'index pour passer au moteur suivant
+          ++index;
         }
-        
-      }
-    
-    // AFFICHAGE DES TABLEAUX RESTE ET QUOTIEN POUR VERIFICATION
-      Serial.print("Pas : ");
-      for (i=0; i<8; i++) {
-        Serial.print(pas[i]);
-        Serial.print(", ");
-      }
-      Serial.println();
-      Serial.print("Quotient : ");
-      for (i=0; i<8; i++) {
-        Serial.print(quotient[i]);
-        Serial.print(", ");
-      }
-      Serial.println();
-      Serial.print("Reste pas : ");
-      for (i=0; i<8; i++) {
-        Serial.print(restepas[i]); 
-        Serial.print(", ");
-      }
-      Serial.println();
-      Serial.print("Pas effectif : ");
-      for (i=0; i<8; i++) {
-        Serial.print(paseffectif[i]); 
-        Serial.print(", ");
-      }
-      Serial.println();
-      delay(1000);
-    
- }
+    }
 
- 
+  if ( index )
+    {
+      // Go to the commanded positions at the defined speed.
+      //on écrit les incréments de positions souhaités
+      Serial.print("I = ");
+      Serial.println(coords[0] - pos_ini[0]);
+      Serial.print("II = ");
+      Serial.println(coords[1] - pos_ini[1]);
+      Serial.print("III = ");
+      Serial.println(coords[2] - pos_ini[2]);
+      Serial.print("IV = ");
+      Serial.println(coords[3] - pos_ini[3]);
+      //on redéfinit la position que doit avoir le moteur
+      K1.p(coords[0] - pos_ini[0], speed);
+      L1.p(coords[1] - pos_ini[1], speed);
+      M1.p(coords[2] - pos_ini[2], speed);
+      N1.p(coords[3] - pos_ini[3], speed).wait();
+      //on envoie la commande au moteur pour aller à la position voulue 
+      K1.pi(coords[0], speed);
+      L1.pi(coords[1], speed);
+      M1.pi(coords[2], speed);
+      N1.pi(coords[3], speed).wait();
+    }
+  else
+    {
+      Serial.println();
+    }
+  
+  delay(1000);
+}
 
+void readData() {
+  Serial ;
+}
